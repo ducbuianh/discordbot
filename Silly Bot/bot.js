@@ -8,11 +8,12 @@ var league = require('./league.json');
 var JSONStream = require('JSONStream');
 var es = require('event-stream');
 
-var STEAM_API = 'http://api.steampowered.com/IDOTA2Match_570/GetLiveLeagueGames/V001/?format=json&key=';
+var STEAM_API = 'http://api.steampowered.com/IDOTA2Match_570/GetLiveLeagueGames/V1/?format=json&key=';
 var NEWLINE = '\n';
 var BLOCK = '```';
 var RADIANT = 0;
 var DIRE = 1;
+var regexNum = /^\d+$/;
 
 var liveMatches = [];
 
@@ -46,23 +47,18 @@ bot.on('message', function (user, userID, channelID, message, evt) {
         var param = args[2];
 
         switch(cmd) {
-            case 'match':
-                if (isEmptyObject(liveMatches)) {
-                    announce(channelID, surroundWithBlock('No LIVE game at the moment'));
-                    break;
-                }
-                announce(channelID, createLiveMatchList());
-                break;
             case 'live':
-                if (param == undefined) {
-                    announce(channelID, surroundWithBlock('Live Match need ID, type \'doto help\' to see available commands'));
+                if (param == undefined || param == '') {
+                    announce(channelID, createLiveMatchList());
                     break;
                 }
-                if (isEmptyObject(liveMatches)) {
-                    announce(channelID, surroundWithBlock('No LIVE game at the moment'));
-                    break;
-                }
-                announce(channelID, createLiveMatchStory(param));
+                if (regexNum.test(param)) {
+	                if (isEmptyObject(liveMatches)) {
+	                    announce(channelID, surroundWithBlock('No LIVE game at the moment'));
+	                    break;
+	                }
+	                announce(channelID, createLiveMatchStory(param));
+            	}
                 break;
             case 'help':
                 announce(channelID, createHelpMsg());
@@ -74,7 +70,6 @@ bot.on('message', function (user, userID, channelID, message, evt) {
                 }
                 break;
             default:
-                announce(channelID, surroundWithBlock('No such command, type \'doto help\' to see available commands'));
                 break;
          }
      }
@@ -117,13 +112,13 @@ function announce(channelID, msg) {
 
 function createLiveMatchList() {
     var result = '';
-    result += 'No  ID          Radiant vs Dire                League       ' + NEWLINE
+    result += 'No  ID          Radiant vs Dire                 League      ' + NEWLINE
     result += '------------------------------------------------------------' + NEWLINE;
     for (var i = 0; i < liveMatches.length; i++) {
       result += addZeroToNumber(i+1) + space(2) 
       + liveMatches[i].match_id + space(2)
-      + fillSpaceToLen('[' + trimToLen(liveMatches[i].radiant_team.team_name, 12) + '] vs [' + trimToLen(liveMatches[i].dire_team.team_name, 11) + ']', 32) + space(2)
-      + trimToLen(getLeagueById(liveMatches[i].league_id), 10) + space(2)
+      + fillSpaceToLen('[' + trimToLen(liveMatches[i].radiant_team.team_name, 12) + '] vs [' + trimToLen(liveMatches[i].dire_team.team_name, 12) + ']', 32) + space(2)
+      + trimToLen(getLeagueById(liveMatches[i].league_id), 12)
       + NEWLINE;
     }
     result = surroundWithBlock(result);
@@ -144,37 +139,45 @@ function createLiveMatchStory(id) {
 }
 
 function createStory(match) {
-    var title = '[' + trimToLen(match.radiant_team.team_name, 12) + '] vs [' + trimToLen(match.dire_team.team_name, 12) + ']'
-                + ' LIVE at ' + getElapsedTime(match.scoreboard.duration);
+    var title = '[' + trimToLen(match.radiant_team.team_name, 12) + '] vs [' + trimToLen(match.dire_team.team_name, 12) + ']';
+    if (match.scoreboard.duration > 0) {
+        title += ' *LIVE at ' + getElapsedTime(match.scoreboard.duration) + '*';
+    } else {
+    	title += ' *in Banpick*';
+    }
     var story = '';
     story += 'Game ' + (match.radiant_series_wins + match.dire_series_wins + 1) + ' of a BO' + (2 * match.series_type + 1) + NEWLINE;
-    story += 'Score: ' + match.radiant_team.team_name + ' (Radiant) '+ match.scoreboard.radiant.score + 
+    if (2 * match.series_type + 1 > 1) {
+		story += 'Serie Score: ' + match.radiant_team.team_name + ' ' + match.radiant_series_wins + 
+             ' - ' + match.dire_series_wins + ' ' + match.dire_team.team_name + NEWLINE; 
+	}
+    story += 'Game Score : ' + match.radiant_team.team_name + ' (Radiant) '+ match.scoreboard.radiant.score + 
              ' - ' + match.scoreboard.dire.score + ' (Dire) ' + match.dire_team.team_name + NEWLINE; 
     story += 'Lineup:' + NEWLINE;
     story += '    Radiant:' + getLineUp(match, RADIANT) + NEWLINE;
     story += '    Dire   :' + getLineUp(match, DIRE) + NEWLINE;
-    story += 'Advantage:';
+    story += 'Networth Advantage: ' + getNetworthAdv(match);
     return title + NEWLINE + surroundWithBlock(story);
-
 }
 
-function getSerieType(typeNo) {
-    var type = '';
-    switch (typeNo) {
-        case '0': type = '1'; break;
-        case '1': type = '3'; break;
-        case '2': type = '5'; break;
-        default: break;
-    }
-    return type;
+function getNetworthAdv(match) {
+	var radiantNet = getNetworth(match.scoreboard.radiant);
+	var direNet = getNetworth(match.scoreboard.dire);
+	logger.info (radiantNet);
+	return (radiantNet >= direNet)?'Radiant +' + (radiantNet-direNet):'Dire +'+(direNet-radiantNet);
+}
 
+function getNetworth(side) {
+	var players = side.players;
+	var net = 0;
+	for (var i = 0; i < players.length; i++) {
+		net += players[i].gold;
+	}
+	return net;
 }
 
 function getLineUp(match, side) {
     var lineup = '';
-    if (match.scoreboard == undefined) return 'Not available';
-    if (match.scoreboard.radiant.picks == undefined) return 'Not available';
-    if (match.scoreboard.dire.picks == undefined) return 'Not available';
     var picks = (side == RADIANT)?match.scoreboard.radiant.picks:match.scoreboard.dire.picks;
     for (var i = 0; i < picks.length; i++) {
         lineup += getHeroNameById(picks[i].hero_id) + ', ' ;
@@ -203,6 +206,7 @@ function createHelpMsg() {
     helpMsg += 'Available Commands:' + NEWLINE;
     helpMsg += 'Type "!doto live" to show live games list' + NEWLINE;
     helpMsg += 'Type "!doto live [matchid]/[No]" to show current status of [matchid]';
+    helpMsg += 'Type "!doto help" to show this';
     helpMsg = surroundWithBlock(helpMsg);
     return helpMsg;
 }
