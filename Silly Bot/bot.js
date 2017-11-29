@@ -139,6 +139,8 @@ function createLiveMatchStory(id) {
 }
 
 function createStory(match) {
+    if (match == undefined) return 'No match with given ID';
+    
     var title = '[' + trimToLen(match.radiant_team.team_name, 12) + '] vs [' + trimToLen(match.dire_team.team_name, 12) + ']';
     if (match.scoreboard.duration > 0) {
         title += ' *LIVE at ' + getElapsedTime(match.scoreboard.duration) + '*';
@@ -154,8 +156,8 @@ function createStory(match) {
     story += 'Game Score : ' + match.radiant_team.team_name + ' (Radiant) '+ match.scoreboard.radiant.score + 
              ' - ' + match.scoreboard.dire.score + ' (Dire) ' + match.dire_team.team_name + NEWLINE; 
     story += 'Lineup:' + NEWLINE;
-    story += '    Radiant:' + getLineUp(match, RADIANT) + NEWLINE;
-    story += '    Dire   :' + getLineUp(match, DIRE) + NEWLINE;
+    story += '    Radiant: ' + getLineUp(match, RADIANT) + NEWLINE;
+    story += '    Dire   : ' + getLineUp(match, DIRE) + NEWLINE;
     story += 'Networth Advantage: ' + getNetworthAdv(match);
     return title + NEWLINE + surroundWithBlock(story);
 }
@@ -164,7 +166,7 @@ function getNetworthAdv(match) {
 	var radiantNet = getNetworth(match.scoreboard.radiant);
 	var direNet = getNetworth(match.scoreboard.dire);
 	logger.info (radiantNet);
-	return (radiantNet >= direNet)?'Radiant +' + (radiantNet-direNet):'Dire +'+(direNet-radiantNet);
+	return (radiantNet >= direNet)?('Radiant +' + (radiantNet-direNet)):('Dire +' + (direNet-radiantNet));
 }
 
 function getNetworth(side) {
